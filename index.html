@@ -187,7 +187,7 @@ header h1 span { color: var(--accent); }
       <div class="eyebrow">P2P brokering · partner tally</div>
       <h1>K Currencies <span>Ledger</span></h1>
     </div>
-    <div class="pair">
+    <div class="pair" id="partnerChips" hidden>
       <span class="chip a" id="chipA">Partner A</span>
       <span class="chip b" id="chipB">Partner B</span>
       <button class="linkish" id="editNamesBtn" type="button" hidden>Rename</button>
@@ -666,6 +666,7 @@ header h1 span { color: var(--accent); }
     $("loginCard").hidden = which !== "login";
     $("deniedCard").hidden = which !== "denied";
     $("app").hidden = which !== "app";
+    $("partnerChips").hidden = which !== "app";
   }
 
   async function loadSettings() {
