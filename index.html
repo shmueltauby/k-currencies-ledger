@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>K Currencies Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one centred column. Balance band first (the answer), then the entry form, then the ledger. */
+:root {
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --sunken: #f6f8fb;
+  --ink: #121926;
+  --muted: #5a6478;
+  --line: #d9dfe8;
+  --accent: #2443cf;
+  --accent-ink: #ffffff;
+  --pa: #0d7a5a;
+  --pb: #b0520b;
+  --pa-soft: #e1f3ec;
+  --pb-soft: #fbeedf;
+  --danger: #bf2f28;
+  --font-ui: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d121b; --surface: #151c28; --sunken: #111722; --ink: #e6eaf2; --muted: #95a0b4;
+    --line: #263043; --accent: #7f95ff; --accent-ink: #0d121b;
+    --pa: #4fd0a0; --pb: #f3a45c; --pa-soft: #123128; --pb-soft: #35240f; --danger: #ff6d63;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d121b; --surface: #151c28; --sunken: #111722; --ink: #e6eaf2; --muted: #95a0b4;
+  --line: #263043; --accent: #7f95ff; --accent-ink: #0d121b;
+  --pa: #4fd0a0; --pb: #f3a45c; --pa-soft: #123128; --pb-soft: #35240f; --danger: #ff6d63;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; }
+#app { display: grid; gap: 28px; }
+.account { flex-basis: 100%; text-align: right; }
+.login-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.login-row .field { flex: 1 1 240px; }
+.login { max-width: 520px; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+.wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2 { margin: 0; text-wrap: balance; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Header */
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+header h1 { font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
+header h1 span { color: var(--accent); }
+.pair { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip.a { background: var(--pa-soft); color: var(--pa); }
+.chip.b { background: var(--pb-soft); color: var(--pb); }
+.linkish { background: none; border: 0; padding: 2px 4px; color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.linkish:hover { color: var(--ink); }
+
+/* Balance band */
+.balance { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.balance-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.bal-rows { display: grid; }
+.bal-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; padding: 18px 20px; }
+.bal-row + .bal-row { border-top: 1px solid var(--line); }
+.bal-who { font-size: 15px; color: var(--muted); }
+.bal-who b { color: var(--ink); font-weight: 600; }
+.bal-amt { font-size: clamp(26px, 6vw, 38px); font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; }
+.bal-amt small { font-size: .5em; color: var(--muted); font-weight: 500; margin-left: 6px; }
+.bal-row.a .bal-amt { color: var(--pa); }
+.bal-row.b .bal-amt { color: var(--pb); }
+.bal-row.even .bal-amt { color: var(--muted); }
+.bal-empty { padding: 22px 20px; color: var(--muted); }
+.totals2 { display: grid; grid-template-columns: 1fr 1fr; }
+.tot { display: grid; gap: 6px; align-content: start; padding: 20px; min-width: 0; }
+.tot + .tot { border-left: 1px solid var(--line); }
+.tot .tot-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tot.a .bal-amt { color: var(--pa); }
+.tot.b .bal-amt { color: var(--pb); }
+.tot.even .bal-amt { color: var(--muted); }
+.tot .parts { font-size: 12px; color: var(--muted); margin: 0; }
+.tot .tot-act { padding-top: 6px; }
+.totals2 + .bal-row { border-top: 1px solid var(--line); }
+@media (max-width: 560px) {
+  .totals2 { grid-template-columns: 1fr; }
+  .tot + .tot { border-left: 0; border-top: 1px solid var(--line); }
+}
+.bal-total { display: grid; gap: 10px; padding: 18px 20px; background: var(--sunken); border-top: 1px solid var(--line); }
+.bal-total .pair-amts { display: flex; flex-wrap: wrap; gap: 6px 28px; align-items: baseline; }
+.bal-total .big { font-size: clamp(22px, 5vw, 30px); font-weight: 600; line-height: 1.15; }
+.bal-total.a .big { color: var(--pa); }
+.bal-total.b .big { color: var(--pb); }
+.bal-total.even .big { color: var(--muted); }
+.rate-line { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 13px; color: var(--muted); }
+.rate-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rate-form input { width: 110px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+
+/* Buttons */
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn.small { padding: 5px 10px; font-size: 13px; }
+
+/* Form */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; display: grid; gap: 16px; }
+.card h2 { font-size: 18px; }
+.seg { display: inline-flex; background: var(--sunken); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 3px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / .12); }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field label, .lbl { font-size: 13px; color: var(--muted); font-weight: 500; }
+.field input, .field select { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken); }
+.field input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.field.wide { grid-column: 1 / -1; }
+.row-opts { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+.row-opts > div { display: grid; gap: 5px; }
+.preview { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; background: var(--sunken); border: 1px dashed var(--line); border-radius: 8px; }
+.preview p { margin: 0; color: var(--muted); }
+.preview p b { color: var(--ink); }
+.hint { font-size: 13px; color: var(--muted); margin: 0; }
+.notice { padding: 14px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+
+/* Ledger */
+.ledger-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ledger-head h2 { font-size: 18px; }
+.ledger { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.entry { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 4px 16px; padding: 14px 18px; align-items: start; }
+.entry + .entry { border-top: 1px solid var(--line); }
+.entry .date { font-size: 13px; color: var(--muted); padding-top: 2px; }
+.entry .desc { min-width: 0; }
+.entry .desc p { margin: 0; overflow-wrap: anywhere; }
+.entry .type { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; color: var(--muted); }
+.entry .note { font-size: 14px; color: var(--muted); }
+.entry .meta { font-size: 12px; color: var(--muted); }
+.entry .effect { text-align: right; display: grid; gap: 6px; justify-items: end; }
+.entry .effect .amt { font-weight: 600; white-space: nowrap; }
+.entry .effect .owes { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.entry.cred-a .amt { color: var(--pa); }
+.entry.cred-b .amt { color: var(--pb); }
+.confirm { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: end; font-size: 13px; }
+.empty { padding: 28px 18px; color: var(--muted); text-align: center; }
+@media (max-width: 560px) {
+  .entry { grid-template-columns: minmax(0, 1fr) auto; }
+  .entry .date { grid-column: 1 / -1; padding: 0; }
+}
+
+/* Settings + toast */
+.names { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: end; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; max-width: calc(100% - 32px); }
+.err { color: var(--danger); font-size: 14px; margin: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .toast { animation: rise .2s ease-out; }
+  @keyframes rise { from { transform: translate(-50%, 8px); opacity: 0; } }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">P2P brokering · partner tally</div>
+      <h1>K Currencies <span>Ledger</span></h1>
+    </div>
+    <div class="pair">
+      <span class="chip a" id="chipA">Partner A</span>
+      <span class="chip b" id="chipB">Partner B</span>
+      <button class="linkish" id="editNamesBtn" type="button" hidden>Rename</button>
+    </div>
+    <div class="hint account" id="account" hidden>Signed in as <b id="acctEmail"></b> · <button class="linkish" id="signOutBtn" type="button">Sign out</button></div>
+  </header>
+
+  <section class="card login" id="loginCard" hidden aria-labelledby="loginTitle">
+    <h2 id="loginTitle">Log in to the ledger</h2>
+    <p class="hint">Enter your email and we'll send you a login link. Only the two partners' emails can open the ledger.</p>
+    <form id="loginForm" class="login-row" novalidate>
+      <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="email" inputmode="email" required></div>
+      <button class="btn primary" type="submit" id="loginBtn">Send login link</button>
+    </form>
+    <p class="hint" id="loginMsg" hidden></p>
+  </section>
+
+  <section class="card" id="deniedCard" hidden>
+    <h2>This email isn't on the ledger</h2>
+    <p class="hint">You're signed in as <b id="deniedEmail"></b>, but only the partners' emails can see the ledger. Ask Shmuel to add this address, or sign out and use the other one.</p>
+    <div><button class="btn" type="button" id="deniedSignOut">Sign out</button></div>
+  </section>
+
+  <div id="app" hidden>
+
+  <section class="card" id="namesCard" hidden aria-label="Partner names">
+    <h2>Partner names</h2>
+    <form class="names" id="namesForm">
+      <div class="field"><label for="nameA">First partner</label><input id="nameA" maxlength="30" required></div>
+      <div class="field"><label for="nameB">Second partner</label><input id="nameB" maxlength="30" required></div>
+      <div class="pair"><button class="btn primary" type="submit">Save names</button><button class="btn" type="button" id="namesCancel">Cancel</button></div>
+    </form>
+  </section>
+
+  <section class="balance" aria-labelledby="balTitle">
+    <div class="balance-head">
+      <h2 class="eyebrow" id="balTitle">Who owes whom</h2>
+      <span class="hint" id="entryCount"></span>
+    </div>
+    <div class="bal-rows" id="balRows">
+      <div class="bal-empty">Loading the ledger…</div>
+    </div>
+    <div id="balTotal" hidden></div>
+  </section>
+
+  <div class="notice" id="noticeBox" hidden></div>
+
+  <section class="card" id="formCard" aria-labelledby="formTitle">
+    <h2 id="formTitle">Add an entry</h2>
+    <form id="entryForm" novalidate>
+      <div style="display:grid;gap:16px">
+        <div class="row-opts">
+          <div>
+            <span class="lbl" id="typeLbl">What happened</span>
+            <div class="seg" role="group" aria-labelledby="typeLbl" id="typeSeg">
+              <button type="button" data-type="transfer">Sent money</button>
+              <button type="button" data-type="profit">Deal profit</button>
+              <button type="button" data-type="expense">Shared expense</button>
+              <button type="button" data-type="opening">Starting balance</button>
+            </div>
+          </div>
+          <div>
+            <span class="lbl" id="byLbl">Who</span>
+            <div class="seg" role="group" aria-labelledby="byLbl" id="bySeg">
+              <button type="button" data-by="a" id="byA">A</button>
+              <button type="button" data-by="b" id="byB">B</button>
+            </div>
+          </div>
+        </div>
+        <p class="hint" id="typeHint"></p>
+        <div class="fields">
+          <div class="field"><label for="amount">Amount</label><input id="amount" class="num" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
+          <div class="field"><label for="currency">Currency</label><input id="currency" class="num" list="currencyList" autocomplete="off" maxlength="12" value="USDT"></div>
+          <div class="field" id="shareField"><label for="share" id="shareLbl">Their share %</label><input id="share" class="num" inputmode="decimal" value="50"></div>
+          <div class="field"><label for="date">Date</label><input id="date" type="date"></div>
+          <div class="field wide"><label for="note">Note (optional)</label><input id="note" maxlength="200" autocomplete="off" placeholder="e.g. Client Yossi, 2,000 USDT at 3.71"></div>
+        </div>
+        <datalist id="currencyList"></datalist>
+        <div class="preview">
+          <p id="previewText">Enter an amount to see the effect.</p>
+          <button class="btn primary" type="submit" id="saveBtn">Add entry</button>
+        </div>
+        <p class="err" id="formErr" hidden></p>
+      </div>
+    </form>
+  </section>
+
+  <section style="display:grid;gap:12px" aria-labelledby="ledgerTitle">
+    <div class="ledger-head">
+      <h2 id="ledgerTitle">All entries</h2>
+      <div class="field" id="filterWrap" hidden style="grid-auto-flow:column;align-items:center;gap:8px">
+        <label for="filter">Currency</label>
+        <select id="filter"><option value="">All</option></select>
+      </div>
+    </div>
+    <div class="ledger" id="ledger"><div class="empty">Loading entries…</div></div>
+  </section>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const DEFAULT_CURRENCIES = ["USDT", "USDC", "USD", "ILS", "BTC", "ETH", "EUR"];
+  const state = {
+    names: { a: "Partner A", b: "Partner B" },
+    settings: {},
+    rateEditing: false,
+    entries: [],
+    loaded: false,
+    canWrite: true,
+    db: null,
+    user: null,
+    uid: null,
+    profiles: {},
+    form: { type: "transfer", by: "a" },
+    confirmId: null,
+    filter: "",
+  };
+
+  const other = (p) => (p === "a" ? "b" : "a");
+  const nm = (p) => state.names[p] || (p === "a" ? "Partner A" : "Partner B");
+  const fmtNum = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+  const fmt = (n) => fmtNum.format(Math.round(n * 1e8) / 1e8);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const today = () => new Date().toLocaleDateString("en-CA");
+  const parseNum = (v) => { const n = Number(String(v).replace(/[,\s]/g, "")); return Number.isFinite(n) ? n : NaN; };
+
+  // How an entry moves the tally: who ends up owing whom, and how much.
+  function effect(e) {
+    const amt = Number(e.amount) || 0;
+    const share = (e.share == null ? 50 : Number(e.share)) / 100;
+    if (e.type === "profit") return { debtor: e.by, creditor: other(e.by), amount: amt * share };
+    if (e.type === "expense") return { creditor: e.by, debtor: other(e.by), amount: amt * share };
+    if (e.type === "opening") return { debtor: e.by, creditor: other(e.by), amount: amt };
+    return { creditor: e.by, debtor: other(e.by), amount: amt };
+  }
+
+  // Dollar-pegged codes count 1:1 as dollars; shekels convert at the saved rate.
+  const USD_LIKE = new Set(["USD", "USDT", "USDC"]);
+  function combined(list, rate) {
+    let usd = 0; const skipped = []; let used = 0;
+    for (const [cur, { net }] of list) {
+      if (USD_LIKE.has(cur)) { usd += net; used++; }
+      else if (cur === "ILS" && rate > 0) { usd += net / rate; used++; }
+      else if (Math.abs(net) >= 1e-9) skipped.push(cur);
+    }
+    return { usd, ils: usd * rate, used, skipped };
+  }
+
+  // Net per currency; positive means B owes A.
+  function balances(entries) {
+    const map = new Map();
+    for (const e of entries) {
+      const cur = e.currency || "?";
+      const ef = effect(e);
+      const signed = ef.creditor === "a" ? ef.amount : -ef.amount;
+      const row = map.get(cur) || { net: 0, count: 0 };
+      row.net += signed; row.count += 1;
+      map.set(cur, row);
+    }
+    return [...map.entries()].sort((x, y) => y[1].count - x[1].count);
+  }
+
+  function describe(e) {
+    const by = `<b>${esc(nm(e.by))}</b>`, to = `<b>${esc(nm(other(e.by)))}</b>`;
+    const amt = `<span class="num">${fmt(Number(e.amount) || 0)} ${esc(e.currency)}</span>`;
+    const share = e.share == null ? 50 : Number(e.share);
+    if (e.type === "profit") return `${by} holds deal profit of ${amt} · ${esc(nm(other(e.by)))}'s share ${share}%`;
+    if (e.type === "expense") return `${by} paid an expense of ${amt} · ${esc(nm(other(e.by)))}'s share ${share}%`;
+    if (e.type === "opening") return `Carried over from before the ledger: ${by} owes ${to} ${amt}`;
+    return `${by} sent ${to} ${amt}`;
+  }
+
+  const TYPE_LABEL = { transfer: "Sent money", profit: "Deal profit", expense: "Shared expense", opening: "Starting balance" };
+
+  // ---------- Rendering ----------
+  function renderNames() {
+    $("chipA").textContent = nm("a");
+    $("chipB").textContent = nm("b");
+    $("byA").textContent = nm("a");
+    $("byB").textContent = nm("b");
+  }
+
+  function renderBalance() {
+    const rows = $("balRows");
+    if (!state.loaded) return;
+    const list = balances(state.entries);
+    $("entryCount").textContent = state.entries.length ? `${state.entries.length} ${state.entries.length === 1 ? "entry" : "entries"}` : "";
+    renderTotal(list);
+    if (!list.length) {
+      rows.innerHTML = `<div class="bal-empty">All square. Nothing recorded yet, so nobody owes anything. Add a starting balance or the first entry below.</div>`;
+      return;
+    }
+    const canSettle = state.canWrite && state.db;
+    const settleBtn = (cur, debtor, abs) => canSettle ? `<button class="btn small" type="button" data-settle="${esc(cur)}" data-debtor="${debtor}" data-amount="${abs}">Record settlement</button>` : "";
+    const totalCard = (label, sym, net, settleCur, partsHtml) => {
+      const abs = Math.abs(net);
+      const even = abs < 1e-9;
+      const creditor = net > 0 ? "a" : "b", debtor = other(creditor);
+      const who = even ? `All square` : `<b>${esc(nm(debtor))}</b> owes <b>${esc(nm(creditor))}</b>`;
+      return `<div class="tot ${even ? "even" : creditor}">
+        <div class="eyebrow">${label}</div>
+        <div class="bal-who">${who}</div>
+        <div class="bal-amt num">${sym}${fmtMoney(even ? 0 : abs)}</div>
+        ${partsHtml}
+        ${even ? "" : `<div class="tot-act">${settleBtn(settleCur, debtor, abs)}</div>`}
+      </div>`;
+    };
+    const ilsRow = list.find(([c]) => c === "ILS");
+    const dollarRows = list.filter(([c]) => USD_LIKE.has(c));
+    const dollarNet = dollarRows.reduce((s, [, r]) => s + r.net, 0);
+    const dollarParts = dollarRows.length > 1
+      ? `<p class="parts num">${dollarRows.map(([c, r]) => `${esc(c)} ${r.net >= 0 ? "" : "−"}${fmt(Math.abs(r.net))}`).join(" · ")}<br>(+ means ${esc(nm("b"))} owes ${esc(nm("a"))})</p>`
+      : dollarRows.length === 1 ? `<p class="parts">All in ${esc(dollarRows[0][0])}</p>` : "";
+    const twoTotals = `<div class="totals2">
+      ${totalCard("Shekels total", "₪", ilsRow ? ilsRow[1].net : 0, "ILS", "")}
+      ${totalCard("Dollars total", "$", dollarNet, dollarRows.length ? dollarRows[0][0] : "USD", dollarParts)}
+    </div>`;
+    const others = list.filter(([c]) => c !== "ILS" && !USD_LIKE.has(c));
+    rows.innerHTML = twoTotals + others.map(([cur, { net }]) => {
+      const abs = Math.abs(net);
+      if (abs < 1e-9) {
+        return `<div class="bal-row even"><div><div class="bal-who">Settled in ${esc(cur)}</div><div class="bal-amt num">0.00<small>${esc(cur)}</small></div></div></div>`;
+      }
+      const creditor = net > 0 ? "a" : "b", debtor = other(creditor);
+      const settle = state.canWrite && state.db ? `<button class="btn small" type="button" data-settle="${esc(cur)}" data-debtor="${debtor}" data-amount="${abs}">Record settlement</button>` : "";
+      return `<div class="bal-row ${creditor}">
+        <div style="min-width:0"><div class="bal-who"><b>${esc(nm(debtor))}</b> owes <b>${esc(nm(creditor))}</b></div>
+        <div class="bal-amt num">${fmt(abs)}<small>${esc(cur)}</small></div></div>${settle}</div>`;
+    }).join("");
+  }
+
+  function renderTotal(list) {
+    const box = $("balTotal");
+    const rate = Number(state.settings.usdIls) || 0;
+    const c = combined(list, rate);
+    if (!c.used && !c.skipped.length) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    const abs = Math.abs(c.usd);
+    const even = abs < 0.005;
+    const creditor = c.usd > 0 ? "a" : "b", debtor = other(creditor);
+    const who = even ? `All square across dollars and shekels` : `<b>${esc(nm(debtor))}</b> owes <b>${esc(nm(creditor))}</b> in total`;
+    const amts = rate > 0
+      ? `<div class="pair-amts"><span class="big num">$${fmtMoney(abs)}</span><span class="big num">₪${fmtMoney(abs * rate)}</span></div>`
+      : `<p class="hint">Set the dollar–shekel rate to see the combined total.</p>`;
+    const rateTxt = rate > 0
+      ? `Rate $1 = ₪${rate}${state.settings.rateDate ? ` · set ${esc(new Date(state.settings.rateDate + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" }))}` : ""}`
+      : "No rate set";
+    const editBtn = state.canWrite && state.db ? `<button class="linkish" type="button" id="rateEdit">Change rate</button>` : "";
+    const rateForm = state.rateEditing
+      ? `<form class="rate-form" id="rateForm"><label for="rateInput">$1 =</label><span>₪</span><input id="rateInput" class="num" inputmode="decimal" value="${rate || ""}" autocomplete="off"><button class="btn small primary" type="submit">Save rate</button><button class="btn small" type="button" id="rateCancel">Cancel</button></form>`
+      : `<div class="rate-line"><span class="num">${rateTxt}</span>${editBtn}</div>`;
+    const skipped = c.skipped.length ? `<p class="hint">Not included in the total: ${c.skipped.map(esc).join(", ")}. These stay in their own currency above.</p>` : "";
+    box.className = `bal-total ${even ? "even" : creditor}`;
+    box.innerHTML = `<div class="eyebrow">Shekels and dollars combined</div><div class="bal-who">${who}</div>${amts}${rateForm}${skipped}
+      <p class="hint">USDT and USDC count as dollars.</p>`;
+    if (state.rateEditing) { const i = $("rateInput"); i.focus(); i.select(); }
+  }
+  const fmtMoney = (n) => new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+  function renderLedger() {
+    const box = $("ledger");
+    if (!state.loaded) return;
+    const currencies = [...new Set(state.entries.map((e) => e.currency).filter(Boolean))].sort();
+    const fw = $("filterWrap"), sel = $("filter");
+    fw.hidden = currencies.length < 2;
+    if (state.filter && !currencies.includes(state.filter)) state.filter = "";
+    sel.innerHTML = `<option value="">All</option>` + currencies.map((c) => `<option ${c === state.filter ? "selected" : ""}>${esc(c)}</option>`).join("");
+
+    const dl = $("currencyList");
+    dl.innerHTML = [...new Set([...currencies, ...DEFAULT_CURRENCIES])].map((c) => `<option value="${esc(c)}"></option>`).join("");
+
+    const shown = state.entries
+      .filter((e) => !state.filter || e.currency === state.filter)
+      .sort((x, y) => (y.date || "").localeCompare(x.date || "") || (y.createdAt || "").localeCompare(x.createdAt || ""));
+    if (!shown.length) {
+      box.innerHTML = `<div class="empty">No entries yet. Use “Add an entry” above to record the first transfer, deal or expense.</div>`;
+      return;
+    }
+    box.innerHTML = shown.map((e) => {
+      const ef = effect(e);
+      const d = e.date ? new Date(e.date + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
+      const del = !state.canWrite || !state.db ? "" :
+        state.confirmId === e.id
+          ? `<div class="confirm"><span>Delete?</span><button class="btn small danger" type="button" data-del-yes="${esc(e.id)}">Delete</button><button class="btn small" type="button" data-del-no>Keep</button></div>`
+          : `<button class="linkish" type="button" data-del="${esc(e.id)}">Delete</button>`;
+      const by = e.createdBy ? `<span data-uid="${esc(e.createdBy)}">${esc(state.profiles[e.createdBy] || "")}</span>` : "";
+      return `<div class="entry cred-${ef.creditor}">
+        <div class="date num">${esc(d)}</div>
+        <div class="desc">
+          <div class="type">${esc(TYPE_LABEL[e.type] || "Entry")}</div>
+          <p>${describe(e)}</p>
+          ${e.note ? `<p class="note">${esc(e.note)}</p>` : ""}
+          ${by ? `<p class="meta">Added by ${by}</p>` : ""}
+        </div>
+        <div class="effect">
+          <span class="amt num">+${fmt(ef.amount)} ${esc(e.currency)}</span>
+          <span class="owes">${esc(nm(ef.debtor))} → ${esc(nm(ef.creditor))}</span>
+          ${del}
+        </div>
+      </div>`;
+    }).join("");
+    resolveProfiles();
+  }
+
+  // "Added by" names come from the members list, keyed by email.
+  function resolveProfiles() {
+    document.querySelectorAll("[data-uid]").forEach((el) => { el.textContent = state.profiles[el.dataset.uid] || el.dataset.uid; });
+  }
+
+  function renderForm() {
+    const f = state.form;
+    document.querySelectorAll("#typeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.type === f.type)));
+    document.querySelectorAll("#bySeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.by === f.by)));
+    const by = nm(f.by), ot = nm(other(f.by));
+    $("byLbl").textContent = f.type === "transfer" ? "Who sent it" : f.type === "profit" ? "Who is holding the profit" : f.type === "opening" ? "Who owes" : "Who paid";
+    $("typeHint").textContent =
+      f.type === "transfer" ? `${by} sent money to ${ot} (or paid something on ${ot}'s behalf). ${ot} now owes it back.`
+      : f.type === "profit" ? `A deal closed and ${by} is holding the profit. ${by} owes ${ot} their share.`
+      : f.type === "opening" ? `What ${by} already owed ${ot} before you started this ledger. Add one per currency, e.g. one in ILS and one in USD.`
+      : `${by} paid a business cost for both of you. ${ot} owes their share of it.`;
+    $("shareField").hidden = f.type === "transfer" || f.type === "opening";
+    $("shareLbl").textContent = `${ot}'s share %`;
+    updatePreview();
+  }
+
+  function readForm() {
+    const amount = parseNum($("amount").value);
+    const currency = $("currency").value.trim().toUpperCase();
+    const share = parseNum($("share").value);
+    return { amount, currency, share, date: $("date").value || today(), note: $("note").value.trim() };
+  }
+
+  function validate(v) {
+    if (!(v.amount > 0)) return "Enter an amount greater than zero.";
+    if (!currencyOk(v.currency)) return "Enter a currency code, like USDT or ILS.";
+    if ((state.form.type === "profit" || state.form.type === "expense") && !(v.share >= 0 && v.share <= 100)) return "The share must be between 0 and 100.";
+    return "";
+  }
+  const currencyOk = (c) => /^[A-Z0-9.\-]{1,12}$/.test(c);
+
+  function updatePreview() {
+    const v = readForm();
+    const p = $("previewText");
+    if (!(v.amount > 0) || !currencyOk(v.currency)) { p.textContent = "Enter an amount to see the effect."; return; }
+    const ef = effect({ type: state.form.type, by: state.form.by, amount: v.amount, share: v.share >= 0 && v.share <= 100 ? v.share : 50 });
+    p.innerHTML = `This adds <b class="num">${fmt(ef.amount)} ${esc(v.currency)}</b> to what <b>${esc(nm(ef.debtor))}</b> owes <b>${esc(nm(ef.creditor))}</b>.`;
+  }
+
+  function renderAll() { renderNames(); renderBalance(); renderLedger(); renderForm(); }
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+  }
+  function showErr(msg) { const e = $("formErr"); e.textContent = msg; e.hidden = !msg; }
+
+  function setReadOnly(reason) {
+    state.canWrite = false;
+    $("formCard").hidden = true;
+    $("editNamesBtn").hidden = true;
+    $("namesCard").hidden = true;
+    const n = $("noticeBox"); n.textContent = reason; n.hidden = false;
+    renderBalance(); renderLedger();
+  }
+
+  function writeError(err, fallback) {
+    const code = err && err.code;
+    if (code === "42501") { setReadOnly("Your login can't change this ledger. Ask Shmuel to add your email."); return; }
+    if (code === "PGRST301" || code === "401") { showErr("Your login has expired. Reload the page and log in again."); return; }
+    showErr(fallback);
+  }
+  const must = ({ error }) => { if (error) throw error; };
+
+  // ---------- Events ----------
+  $("typeSeg").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-type]"); if (!b) return; state.form.type = b.dataset.type; renderForm(); });
+  $("bySeg").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-by]"); if (!b) return; state.form.by = b.dataset.by; renderForm(); });
+  ["amount", "currency", "share"].forEach((id) => $(id).addEventListener("input", () => { showErr(""); updatePreview(); }));
+
+  $("entryForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!state.db) return;
+    const v = readForm();
+    const problem = validate(v);
+    if (problem) { showErr(problem); return; }
+    showErr("");
+    const row = {
+      type: state.form.type,
+      by_partner: state.form.by,
+      amount: v.amount,
+      currency: v.currency,
+      entry_date: v.date,
+      note: v.note,
+      share: state.form.type === "profit" || state.form.type === "expense" ? v.share : null,
+    };
+    const btn = $("saveBtn"); btn.disabled = true;
+    try {
+      must(await state.db.from("kc_entries").insert(row));
+      await loadEntries();
+      $("amount").value = ""; $("note").value = "";
+      updatePreview();
+      toast("Entry added");
+    } catch (err) {
+      writeError(err, "Couldn't save the entry. Check your connection and try again.");
+    } finally { btn.disabled = false; }
+  });
+
+  $("balRows").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-settle]"); if (!b) return;
+    state.form.type = "transfer";
+    state.form.by = b.dataset.debtor;
+    $("amount").value = String(Math.round(Number(b.dataset.amount) * 1e8) / 1e8);
+    $("currency").value = b.dataset.settle;
+    $("note").value = "Settlement";
+    $("date").value = today();
+    renderForm();
+    $("formCard").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    $("amount").focus({ preventScroll: true });
+  });
+
+  $("ledger").addEventListener("click", async (ev) => {
+    const t = ev.target.closest("button"); if (!t) return;
+    if (t.dataset.del) { state.confirmId = t.dataset.del; renderLedger(); return; }
+    if (t.hasAttribute("data-del-no")) { state.confirmId = null; renderLedger(); return; }
+    if (t.dataset.delYes && state.db) {
+      t.disabled = true;
+      try { must(await state.db.from("kc_entries").delete().eq("id", t.dataset.delYes)); state.confirmId = null; await loadEntries(); toast("Entry deleted"); }
+      catch (err) { state.confirmId = null; renderLedger(); writeError(err, "Couldn't delete that entry. Try again."); }
+    }
+  });
+
+  $("filter").addEventListener("change", (ev) => { state.filter = ev.target.value; renderLedger(); });
+
+  $("editNamesBtn").addEventListener("click", () => {
+    $("nameA").value = nm("a"); $("nameB").value = nm("b");
+    $("namesCard").hidden = false; $("nameA").focus();
+  });
+  $("namesCancel").addEventListener("click", () => { $("namesCard").hidden = true; });
+  $("namesForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const a = $("nameA").value.trim(), b = $("nameB").value.trim();
+    if (!a || !b || !state.db) return;
+    try { must(await state.db.from("kc_settings").update({ name_a: a, name_b: b, updated_at: new Date().toISOString() }).eq("id", 1)); $("namesCard").hidden = true; await loadSettings(); toast("Names saved"); }
+    catch (err) { $("namesCard").hidden = true; writeError(err, "Couldn't save the names. Try again."); }
+  });
+
+  $("balTotal").addEventListener("click", (ev) => {
+    const t = ev.target.closest("button"); if (!t) return;
+    if (t.id === "rateEdit") { state.rateEditing = true; renderBalance(); }
+    if (t.id === "rateCancel") { state.rateEditing = false; renderBalance(); }
+  });
+  $("balTotal").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!state.db) return;
+    const r = parseNum($("rateInput").value);
+    if (!(r > 0 && r < 100)) { toast("Enter the shekels per dollar, like 3.09"); return; }
+    try {
+      must(await state.db.from("kc_settings").update({ usd_ils: r, rate_date: today(), updated_at: new Date().toISOString() }).eq("id", 1));
+      state.rateEditing = false; await loadSettings(); toast("Rate saved");
+    } catch (err) { state.rateEditing = false; renderBalance(); writeError(err, "Couldn't save the rate. Try again."); }
+  });
+
+  // ---------- Boot ----------
+  // The publishable key is meant to be public; row-level security in the database decides who sees what.
+  const SUPABASE_URL = "https://wjixjdsbhbxuikfgtivt.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_KJOb1noAARK82oucuePH0Q_2ncD5Xz-";
+
+  $("date").value = today();
+  renderNames(); renderForm();
+
+  function showOnly(which) {
+    $("loginCard").hidden = which !== "login";
+    $("deniedCard").hidden = which !== "denied";
+    $("app").hidden = which !== "app";
+  }
+
+  async function loadSettings() {
+    const { data, error } = await state.db.from("kc_settings").select("*").eq("id", 1).maybeSingle();
+    if (error) return;
+    state.settings = data ? { usdIls: data.usd_ils, rateDate: data.rate_date } : {};
+    state.names = { a: (data && data.name_a) || "Partner A", b: (data && data.name_b) || "Partner B" };
+    renderAll();
+  }
+
+  async function loadEntries() {
+    const { data, error } = await state.db.from("kc_entries").select("*").order("entry_date", { ascending: false }).limit(5000);
+    if (error) {
+      state.loaded = true;
+      $("balRows").innerHTML = `<div class="bal-empty">Couldn't load the ledger. Reload the page to try again.</div>`;
+      return;
+    }
+    state.entries = data.map((r) => ({
+      id: r.id, type: r.type, by: r.by_partner, amount: Number(r.amount), currency: r.currency,
+      share: r.share == null ? null : Number(r.share), date: r.entry_date, note: r.note,
+      createdBy: r.created_by_email || "", createdAt: r.created_at,
+    }));
+    state.loaded = true;
+    renderBalance(); renderLedger();
+  }
+
+  async function loadMembers() {
+    const { data } = await state.db.from("kc_members").select("email, display_name");
+    state.profiles = {};
+    (data || []).forEach((m) => { state.profiles[m.email] = m.display_name; });
+  }
+
+  let channel = null;
+  let started = false;
+  async function startLedger(session) {
+    const email = (session.user && session.user.email) || "";
+    $("acctEmail").textContent = email;
+    $("account").hidden = false;
+    const { data: ok, error } = await state.db.rpc("kc_is_member");
+    if (error || !ok) { $("deniedEmail").textContent = email; showOnly("denied"); return; }
+    showOnly("app");
+    if (started) return;
+    started = true;
+    state.canWrite = true;
+    $("editNamesBtn").hidden = false;
+    await loadMembers();
+    await Promise.all([loadSettings(), loadEntries()]);
+    // Live updates when the other partner adds, deletes or edits something.
+    let t;
+    const refresh = (fn) => () => { clearTimeout(t); t = setTimeout(fn, 250); };
+    channel = state.db.channel("kc-ledger")
+      .on("postgres_changes", { event: "*", schema: "public", table: "kc_entries" }, refresh(loadEntries))
+      .on("postgres_changes", { event: "*", schema: "public", table: "kc_settings" }, () => loadSettings())
+      .subscribe();
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) loadEntries(); });
+  }
+
+  function stopLedger() {
+    started = false;
+    if (channel) { state.db.removeChannel(channel); channel = null; }
+    state.entries = []; state.loaded = false;
+    $("account").hidden = true; $("editNamesBtn").hidden = true;
+    showOnly("login");
+  }
+
+  $("loginForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const email = $("loginEmail").value.trim().toLowerCase();
+    const msg = $("loginMsg");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = "Enter a full email address."; msg.hidden = false; return; }
+    const btn = $("loginBtn"); btn.disabled = true;
+    const { error } = await state.db.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
+    btn.disabled = false;
+    msg.hidden = false;
+    msg.textContent = error
+      ? (error.status === 429 ? "Too many login emails in a short time. Wait a few minutes and try again." : `Couldn't send the link: ${error.message}`)
+      : `Check ${email} for a login link. Open it on this device.`;
+  });
+
+  const signOut = async () => { await state.db.auth.signOut(); stopLedger(); };
+  $("signOutBtn").addEventListener("click", signOut);
+  $("deniedSignOut").addEventListener("click", signOut);
+
+  if (!window.supabase || !window.supabase.createClient) {
+    $("loginCard").hidden = false;
+    $("loginMsg").hidden = false;
+    $("loginMsg").textContent = "The page couldn't load its login library. Check your connection and reload.";
+    return;
+  }
+  state.db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true } });
+  state.db.auth.onAuthStateChange((event, session) => {
+    // Defer so we never call the client from inside its own auth callback.
+    setTimeout(() => { if (session) startLedger(session); else stopLedger(); }, 0);
+  });
+})();
+</script>
+</body>
+</html>
