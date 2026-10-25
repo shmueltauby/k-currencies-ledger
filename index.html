@@ -52,6 +52,8 @@ body { margin: 0; }
 .login-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .login-row .field { flex: 1 1 240px; }
 .login { max-width: 520px; }
+.cur-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.field .cur-row input { width: 130px; flex: 0 0 auto; }
 body {
   background: var(--bg); color: var(--ink);
   font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
@@ -243,10 +245,10 @@ header h1 span { color: var(--accent); }
           <div>
             <span class="lbl" id="typeLbl">What happened</span>
             <div class="seg" role="group" aria-labelledby="typeLbl" id="typeSeg">
+              <button type="button" data-type="opening">Owes money</button>
               <button type="button" data-type="transfer">Sent money</button>
               <button type="button" data-type="profit">Deal profit</button>
               <button type="button" data-type="expense">Shared expense</button>
-              <button type="button" data-type="opening">Starting balance</button>
             </div>
           </div>
           <div>
@@ -259,8 +261,20 @@ header h1 span { color: var(--accent); }
         </div>
         <p class="hint" id="typeHint"></p>
         <div class="fields">
+          <div class="field wide">
+            <span class="lbl" id="curLbl">Currency</span>
+            <div class="cur-row">
+              <div class="seg" role="group" aria-labelledby="curLbl" id="curSeg">
+                <button type="button" data-cur="ILS">₪ Shekels</button>
+                <button type="button" data-cur="USD">$ Dollars</button>
+                <button type="button" data-cur="USDT">USDT</button>
+                <button type="button" data-cur="BTC">BTC</button>
+                <button type="button" data-cur="">Other</button>
+              </div>
+              <input id="currency" class="num" list="currencyList" autocomplete="off" maxlength="12" value="USDT" aria-label="Currency code, like ETH or EUR" placeholder="e.g. ETH" hidden>
+            </div>
+          </div>
           <div class="field"><label for="amount">Amount</label><input id="amount" class="num" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
-          <div class="field"><label for="currency">Currency</label><input id="currency" class="num" list="currencyList" autocomplete="off" maxlength="12" value="USDT"></div>
           <div class="field" id="shareField"><label for="share" id="shareLbl">Their share %</label><input id="share" class="num" inputmode="decimal" value="50"></div>
           <div class="field"><label for="date">Date</label><input id="date" type="date"></div>
           <div class="field wide"><label for="note">Note (optional)</label><input id="note" maxlength="200" autocomplete="off" placeholder="e.g. Client Yossi, 2,000 USDT at 3.71"></div>
@@ -360,11 +374,11 @@ header h1 span { color: var(--accent); }
     const share = e.share == null ? 50 : Number(e.share);
     if (e.type === "profit") return `${by} holds deal profit of ${amt} · ${esc(nm(other(e.by)))}'s share ${share}%`;
     if (e.type === "expense") return `${by} paid an expense of ${amt} · ${esc(nm(other(e.by)))}'s share ${share}%`;
-    if (e.type === "opening") return `Carried over from before the ledger: ${by} owes ${to} ${amt}`;
+    if (e.type === "opening") return `${by} owes ${to} ${amt}`;
     return `${by} sent ${to} ${amt}`;
   }
 
-  const TYPE_LABEL = { transfer: "Sent money", profit: "Deal profit", expense: "Shared expense", opening: "Starting balance" };
+  const TYPE_LABEL = { transfer: "Sent money", profit: "Deal profit", expense: "Shared expense", opening: "Owes money" };
 
   // ---------- Rendering ----------
   function renderNames() {
@@ -510,9 +524,10 @@ header h1 span { color: var(--accent); }
     $("typeHint").textContent =
       f.type === "transfer" ? `${by} sent money to ${ot} (or paid something on ${ot}'s behalf). ${ot} now owes it back.`
       : f.type === "profit" ? `A deal closed and ${by} is holding the profit. ${by} owes ${ot} their share.`
-      : f.type === "opening" ? `What ${by} already owed ${ot} before you started this ledger. Add one per currency, e.g. one in ILS and one in USD.`
+      : f.type === "opening" ? `Record that ${by} owes ${ot} money: a loan, an unpaid amount, or a balance from before this ledger.`
       : `${by} paid a business cost for both of you. ${ot} owes their share of it.`;
     $("shareField").hidden = f.type === "transfer" || f.type === "opening";
+    syncCurrency();
     $("shareLbl").textContent = `${ot}'s share %`;
     updatePreview();
   }
@@ -571,6 +586,32 @@ header h1 span { color: var(--accent); }
   $("bySeg").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-by]"); if (!b) return; state.form.by = b.dataset.by; renderForm(); });
   ["amount", "currency", "share"].forEach((id) => $(id).addEventListener("input", () => { showErr(""); updatePreview(); }));
 
+  // Quick currency picks; "Other" opens a code field for anything else (ETH, EUR, ...).
+  const QUICK_CURRENCIES = ["ILS", "USD", "USDT", "BTC"];
+  let curOther = false;
+  function syncCurrency() {
+    const cur = $("currency").value.trim().toUpperCase();
+    if (!curOther && cur && !QUICK_CURRENCIES.includes(cur)) curOther = true;
+    document.querySelectorAll("#curSeg button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(curOther ? b.dataset.cur === "" : b.dataset.cur === cur));
+    });
+    $("currency").hidden = !curOther;
+  }
+  function setCurrency(code) {
+    curOther = !QUICK_CURRENCIES.includes(code);
+    $("currency").value = code;
+    syncCurrency(); updatePreview();
+  }
+  $("curSeg").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-cur]"); if (!b) return;
+    showErr("");
+    if (b.dataset.cur) { setCurrency(b.dataset.cur); return; }
+    curOther = true;
+    if (QUICK_CURRENCIES.includes($("currency").value.trim().toUpperCase())) $("currency").value = "";
+    syncCurrency(); updatePreview();
+    $("currency").focus();
+  });
+
   $("entryForm").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     if (!state.db) return;
@@ -604,6 +645,7 @@ header h1 span { color: var(--accent); }
     state.form.type = "transfer";
     state.form.by = b.dataset.debtor;
     $("amount").value = String(Math.round(Number(b.dataset.amount) * 1e8) / 1e8);
+    curOther = !QUICK_CURRENCIES.includes(b.dataset.settle);
     $("currency").value = b.dataset.settle;
     $("note").value = "Settlement";
     $("date").value = today();
