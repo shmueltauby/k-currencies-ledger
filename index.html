@@ -298,6 +298,19 @@ header h1 span { color: var(--accent); }
           </div>
           <div class="field"><label for="amount">Amount</label><input id="amount" class="num" inputmode="decimal" autocomplete="off" placeholder="0.00"></div>
           <div class="field" id="shareField"><label for="share" id="shareLbl">Their share %</label><input id="share" class="num" inputmode="decimal" value="50"></div>
+          <div class="field wide" id="feeField">
+            <label for="fee">Fee % added on top</label>
+            <div class="cur-row">
+              <input id="fee" class="num" inputmode="decimal" autocomplete="off" value="0">
+              <div class="seg" role="group" aria-label="Quick fee" id="feeSeg">
+                <button type="button" data-fee="0">No fee</button>
+                <button type="button" data-fee="1">1%</button>
+                <button type="button" data-fee="1.5">1.5%</button>
+                <button type="button" data-fee="2">2%</button>
+                <button type="button" data-fee="3">3%</button>
+              </div>
+            </div>
+          </div>
           <div class="field"><label for="date">Date</label><input id="date" type="date"></div>
           <div class="field wide"><label for="note">Note (optional)</label><input id="note" maxlength="200" autocomplete="off" placeholder="e.g. Client Yossi, 2,000 USDT at 3.71"></div>
         </div>
@@ -361,7 +374,9 @@ header h1 span { color: var(--accent); }
     if (e.type === "profit") return { debtor: e.by, creditor: other(e.by), amount: amt * share };
     if (e.type === "expense") return { creditor: e.by, debtor: other(e.by), amount: amt * share };
     if (e.type === "opening") return { debtor: e.by, creditor: other(e.by), amount: amt };
-    return { creditor: e.by, debtor: other(e.by), amount: amt };
+    // Money sent: the receiver owes it back plus any fee on top.
+    const fee = Number(e.feePct) > 0 ? Number(e.feePct) / 100 : 0;
+    return { creditor: e.by, debtor: other(e.by), amount: amt * (1 + fee) };
   }
 
   // Dollar-pegged codes count 1:1 as dollars; shekels convert at the saved rate.
@@ -397,6 +412,11 @@ header h1 span { color: var(--accent); }
     if (e.type === "profit") return `${by} holds deal profit of ${amt} · ${esc(nm(other(e.by)))}'s share ${share}%`;
     if (e.type === "expense") return `${by} paid an expense of ${amt} · ${esc(nm(other(e.by)))}'s share ${share}%`;
     if (e.type === "opening") return `${by} owes ${to} ${amt}`;
+    const fee = Number(e.feePct) || 0;
+    if (fee > 0) {
+      const feeAmt = `<span class="num">${fmt((Number(e.amount) || 0) * fee / 100)} ${esc(e.currency)}</span>`;
+      return `${by} sent ${to} ${amt} + ${fee}% fee (${feeAmt})`;
+    }
     return `${by} sent ${to} ${amt}`;
   }
 
@@ -549,6 +569,8 @@ header h1 span { color: var(--accent); }
       : f.type === "opening" ? `Record that ${by} owes ${ot} money: a loan, an unpaid amount, or a balance from before this ledger.`
       : `${by} paid a business cost for both of you. ${ot} owes their share of it.`;
     $("shareField").hidden = f.type === "transfer" || f.type === "opening";
+    $("feeField").hidden = f.type !== "transfer";
+    syncFee();
     syncCurrency();
     $("shareLbl").textContent = `${ot}'s share %`;
     updatePreview();
@@ -558,11 +580,14 @@ header h1 span { color: var(--accent); }
     const amount = parseNum($("amount").value);
     const currency = $("currency").value.trim().toUpperCase();
     const share = parseNum($("share").value);
-    return { amount, currency, share, date: $("date").value || today(), note: $("note").value.trim() };
+    const feeRaw = $("fee").value.trim().replace("%", "");
+    const fee = feeRaw === "" ? 0 : parseNum(feeRaw);
+    return { amount, currency, share, fee, date: $("date").value || today(), note: $("note").value.trim() };
   }
 
   function validate(v) {
     if (!(v.amount > 0)) return "Enter an amount greater than zero.";
+    if (state.form.type === "transfer" && !(v.fee >= 0 && v.fee <= 50)) return "The fee must be between 0 and 50%.";
     if (!currencyOk(v.currency)) return "Enter a currency code, like USDT or ILS.";
     if ((state.form.type === "profit" || state.form.type === "expense") && !(v.share >= 0 && v.share <= 100)) return "The share must be between 0 and 100.";
     return "";
@@ -573,8 +598,10 @@ header h1 span { color: var(--accent); }
     const v = readForm();
     const p = $("previewText");
     if (!(v.amount > 0) || !currencyOk(v.currency)) { p.textContent = "Enter an amount to see the effect."; return; }
-    const ef = effect({ type: state.form.type, by: state.form.by, amount: v.amount, share: v.share >= 0 && v.share <= 100 ? v.share : 50 });
-    p.innerHTML = `This adds <b class="num">${fmt(ef.amount)} ${esc(v.currency)}</b> to what <b>${esc(nm(ef.debtor))}</b> owes <b>${esc(nm(ef.creditor))}</b>.`;
+    const feePct = state.form.type === "transfer" && v.fee > 0 && v.fee <= 50 ? v.fee : 0;
+    const ef = effect({ type: state.form.type, by: state.form.by, amount: v.amount, share: v.share >= 0 && v.share <= 100 ? v.share : 50, feePct });
+    const feeNote = feePct ? ` (${fmt(v.amount)} + ${feePct}% fee)` : "";
+    p.innerHTML = `This adds <b class="num">${fmt(ef.amount)} ${esc(v.currency)}</b>${esc(feeNote)} to what <b>${esc(nm(ef.debtor))}</b> owes <b>${esc(nm(ef.creditor))}</b>.`;
   }
 
   function renderAll() { renderNames(); renderBalance(); renderLedger(); renderForm(); }
@@ -607,6 +634,19 @@ header h1 span { color: var(--accent); }
   $("typeSeg").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-type]"); if (!b) return; state.form.type = b.dataset.type; renderForm(); });
   $("bySeg").addEventListener("click", (ev) => { const b = ev.target.closest("button[data-by]"); if (!b) return; state.form.by = b.dataset.by; renderForm(); });
   ["amount", "currency", "share"].forEach((id) => $(id).addEventListener("input", () => { showErr(""); updatePreview(); }));
+
+  // Fee on money sent: quick picks fill the box; any other % can be typed. The last one used is remembered on this device.
+  function syncFee() {
+    const v = $("fee").value.trim().replace("%", "");
+    document.querySelectorAll("#feeSeg button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.fee) === Number(v || 0))));
+  }
+  function rememberFee() { try { localStorage.setItem("kc-fee", $("fee").value.trim()); } catch (_) {} }
+  try { const f = localStorage.getItem("kc-fee"); if (f !== null && f !== "") $("fee").value = f; } catch (_) {}
+  $("feeSeg").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-fee]"); if (!b) return;
+    $("fee").value = b.dataset.fee; rememberFee(); syncFee(); showErr(""); updatePreview();
+  });
+  $("fee").addEventListener("input", () => { rememberFee(); syncFee(); showErr(""); updatePreview(); });
 
   // Quick currency picks; "Other" opens a code field for anything else (ETH, EUR, ...).
   const QUICK_CURRENCIES = ["ILS", "USD", "USDT", "BTC"];
@@ -649,6 +689,7 @@ header h1 span { color: var(--accent); }
       entry_date: v.date,
       note: v.note,
       share: state.form.type === "profit" || state.form.type === "expense" ? v.share : null,
+      fee_pct: state.form.type === "transfer" && v.fee > 0 ? v.fee : null,
     };
     const btn = $("saveBtn"); btn.disabled = true;
     try {
@@ -670,6 +711,7 @@ header h1 span { color: var(--accent); }
     curOther = !QUICK_CURRENCIES.includes(b.dataset.settle);
     $("currency").value = b.dataset.settle;
     $("note").value = "Settlement";
+    $("fee").value = "0";
     $("date").value = today();
     renderForm();
     $("formCard").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
@@ -750,7 +792,7 @@ header h1 span { color: var(--accent); }
     }
     state.entries = data.map((r) => ({
       id: r.id, type: r.type, by: r.by_partner, amount: Number(r.amount), currency: r.currency,
-      share: r.share == null ? null : Number(r.share), date: r.entry_date, note: r.note,
+      share: r.share == null ? null : Number(r.share), feePct: r.fee_pct == null ? 0 : Number(r.fee_pct), date: r.entry_date, note: r.note,
       createdBy: r.created_by_email || "", createdAt: r.created_at,
     }));
     state.loaded = true;
