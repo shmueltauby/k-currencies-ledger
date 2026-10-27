@@ -52,6 +52,9 @@ body { margin: 0; }
 .login-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .login-row .field { flex: 1 1 240px; }
 .login { max-width: 520px; }
+.login-grid { display: grid; gap: 12px; }
+.login-actions { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.login-actions .linkish { padding-inline: 0; text-align: left; }
 .cur-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .field .cur-row input { width: 130px; flex: 0 0 auto; }
 body {
@@ -194,17 +197,36 @@ header h1 span { color: var(--accent); }
       <span class="chip b" id="chipB">Partner B</span>
       <button class="linkish" id="editNamesBtn" type="button" hidden>Rename</button>
     </div>
-    <div class="hint account" id="account" hidden>Signed in as <b id="acctEmail"></b> · <button class="linkish" id="signOutBtn" type="button">Sign out</button></div>
+    <div class="hint account" id="account" hidden>Signed in as <b id="acctEmail"></b> · <button class="linkish" id="setPwBtn" type="button">Set password</button> · <button class="linkish" id="signOutBtn" type="button">Sign out</button></div>
   </header>
 
   <section class="card login" id="loginCard" hidden aria-labelledby="loginTitle">
     <h2 id="loginTitle">Log in to the ledger</h2>
-    <p class="hint">Enter your email and we'll send you a login link. Only the two partners' emails can open the ledger.</p>
-    <form id="loginForm" class="login-row" novalidate>
-      <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="email" inputmode="email" required></div>
-      <button class="btn primary" type="submit" id="loginBtn">Send login link</button>
+    <p class="hint">Only the two partners' emails can open the ledger.</p>
+    <form id="loginForm" class="login-grid" novalidate>
+      <div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="username" inputmode="email" required></div>
+      <div class="field"><label for="loginPw">Password</label><input id="loginPw" type="password" autocomplete="current-password" required></div>
+      <div class="login-actions">
+        <button class="btn primary" type="submit" id="loginBtn">Log in</button>
+        <button class="linkish" type="button" id="linkBtn">First time or forgot your password? Email me a login link</button>
+      </div>
     </form>
-    <p class="hint" id="loginMsg" hidden></p>
+    <p class="hint" id="loginMsg" role="status" hidden></p>
+  </section>
+
+  <section class="card login" id="pwCard" hidden aria-labelledby="pwTitle">
+    <h2 id="pwTitle">Set your password</h2>
+    <p class="hint" id="pwIntro">Choose a password so next time you can log in with just your email and password.</p>
+    <form id="pwForm" class="login-grid" novalidate>
+      <input type="email" id="pwUser" autocomplete="username" hidden>
+      <div class="field"><label for="pwNew">New password</label><input id="pwNew" type="password" autocomplete="new-password" minlength="8" required></div>
+      <div class="field"><label for="pwAgain">Type it again</label><input id="pwAgain" type="password" autocomplete="new-password" minlength="8" required></div>
+      <div class="login-actions">
+        <button class="btn primary" type="submit" id="pwSave">Save password</button>
+        <button class="btn" type="button" id="pwCancel">Not now</button>
+      </div>
+    </form>
+    <p class="hint" id="pwMsg" role="status" hidden></p>
   </section>
 
   <section class="card" id="deniedCard" hidden>
@@ -750,6 +772,8 @@ header h1 span { color: var(--accent); }
     const { data: ok, error } = await state.db.rpc("kc_is_member");
     if (error || !ok) { $("deniedEmail").textContent = email; showOnly("denied"); return; }
     showOnly("app");
+    $("pwUser").value = email;
+    if (arrivedByLink) { arrivedByLink = false; openPwCard(true); }
     if (started) return;
     started = true;
     state.canWrite = true;
@@ -770,22 +794,68 @@ header h1 span { color: var(--accent); }
     started = false;
     if (channel) { state.db.removeChannel(channel); channel = null; }
     state.entries = []; state.loaded = false;
-    $("account").hidden = true; $("editNamesBtn").hidden = true;
+    $("account").hidden = true; $("editNamesBtn").hidden = true; $("pwCard").hidden = true;
     showOnly("login");
   }
+
+  const emailOk = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+  const say = (id, text) => { const m = $(id); m.textContent = text; m.hidden = !text; };
 
   $("loginForm").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const email = $("loginEmail").value.trim().toLowerCase();
-    const msg = $("loginMsg");
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = "Enter a full email address."; msg.hidden = false; return; }
-    const btn = $("loginBtn"); btn.disabled = true;
+    const password = $("loginPw").value;
+    if (!emailOk(email)) { say("loginMsg", "Enter a full email address."); return; }
+    if (!password) { say("loginMsg", "Enter your password, or use the login link below if you haven't set one yet."); return; }
+    const btn = $("loginBtn"); btn.disabled = true; say("loginMsg", "");
+    const { error } = await state.db.auth.signInWithPassword({ email, password });
+    btn.disabled = false;
+    if (error) {
+      say("loginMsg", error.status === 429
+        ? "Too many attempts. Wait a few minutes and try again."
+        : "Wrong email or password. If you haven't set a password yet, use the login link below.");
+      return;
+    }
+    $("loginPw").value = "";
+  });
+
+  $("linkBtn").addEventListener("click", async () => {
+    const email = $("loginEmail").value.trim().toLowerCase();
+    if (!emailOk(email)) { say("loginMsg", "Enter your email above first, then ask for the link."); $("loginEmail").focus(); return; }
+    const btn = $("linkBtn"); btn.disabled = true;
     const { error } = await state.db.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
     btn.disabled = false;
-    msg.hidden = false;
-    msg.textContent = error
+    say("loginMsg", error
       ? (error.status === 429 ? "Too many login emails in a short time. Wait a few minutes and try again." : `Couldn't send the link: ${error.message}`)
-      : `Check ${email} for a login link. Open it on this device.`;
+      : `Check ${email} for a login link. Open it on this device, then set your password.`);
+  });
+
+  function openPwCard(afterLink) {
+    $("pwIntro").textContent = afterLink
+      ? "You're in. Choose a password so next time you can log in with just your email and password."
+      : "Choose a new password for logging in. At least 8 characters.";
+    $("pwNew").value = ""; $("pwAgain").value = ""; say("pwMsg", "");
+    $("pwCard").hidden = false;
+    $("pwNew").focus();
+  }
+  $("setPwBtn").addEventListener("click", () => openPwCard(false));
+  $("pwCancel").addEventListener("click", () => { $("pwCard").hidden = true; });
+  $("pwForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const a = $("pwNew").value, b = $("pwAgain").value;
+    if (a.length < 8) { say("pwMsg", "Use at least 8 characters."); return; }
+    if (a !== b) { say("pwMsg", "The two passwords don't match."); return; }
+    const btn = $("pwSave"); btn.disabled = true;
+    const { error } = await state.db.auth.updateUser({ password: a });
+    btn.disabled = false;
+    if (error) {
+      say("pwMsg", /reauth|recent/i.test(error.message)
+        ? "For safety, log out, log in again with an email link, then set the password straight away."
+        : `Couldn't save the password: ${error.message}`);
+      return;
+    }
+    $("pwCard").hidden = true; $("pwNew").value = ""; $("pwAgain").value = "";
+    toast("Password saved. Next time, log in with your email and password.");
   });
 
   const signOut = async () => { await state.db.auth.signOut(); stopLedger(); };
@@ -798,6 +868,8 @@ header h1 span { color: var(--accent); }
     $("loginMsg").textContent = "The page couldn't load its login library. Check your connection and reload.";
     return;
   }
+  // Remember whether this visit came from an emailed link (the client clears the address bar).
+  var arrivedByLink = /type=(magiclink|signup|recovery|invite)/.test(location.hash);
   state.db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true } });
   state.db.auth.onAuthStateChange((event, session) => {
     // Defer so we never call the client from inside its own auth callback.
